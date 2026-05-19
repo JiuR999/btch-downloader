@@ -1,0 +1,11 @@
+version = 1
+shortlived_issue = true
+autofix = true
+
+[[analyzers]]
+name = "javascript"
+enabled = true
+
+  [analyzers.meta]
+  environment = ["nodejs"]
+  dialect = "typescript"
