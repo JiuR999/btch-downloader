@@ -652,8 +652,18 @@
         </div>
         <div id="downloadButtons" class="download-row"></div>
       </div>
+    </div>
 
-      <div id="mediaGallery" class="media-gallery"></div>
+    <!-- Image/Media Gallery Section -->
+    <div id="mediaSection" class="video-section">
+      <div class="main-card">
+        <div class="video-meta">
+          <h3 id="mediaTitle">Media</h3>
+          <span id="mediaPlatform">Platform</span>
+        </div>
+        <div id="mediaGallery" class="media-gallery"></div>
+        <div id="mediaDownloadButtons" class="download-row" style="margin-top: 1rem;"></div>
+      </div>
     </div>
 
     <!-- Result Card (at bottom) -->
@@ -715,7 +725,11 @@
       videoTitle: document.getElementById('videoTitle'),
       videoPlatform: document.getElementById('videoPlatform'),
       downloadButtons: document.getElementById('downloadButtons'),
+      mediaSection: document.getElementById('mediaSection'),
+      mediaTitle: document.getElementById('mediaTitle'),
+      mediaPlatform: document.getElementById('mediaPlatform'),
       mediaGallery: document.getElementById('mediaGallery'),
+      mediaDownloadButtons: document.getElementById('mediaDownloadButtons'),
       exampleItems: document.querySelectorAll('.example-item')
     };
 
@@ -810,11 +824,22 @@
       try { new URL(str); return true; } catch { return false; }
     }
 
+    function extractUrl(text) {
+      const urlRegex = /https?:\/\/[^\s]+/gi;
+      const matches = text.match(urlRegex);
+      if (matches && matches.length > 0) {
+        return matches[0].replace(/[.,;:!?）》]+$/, '');
+      }
+      return null;
+    }
+
     function detectPlatform(input, selected) {
       if (selected !== 'auto') return selected;
-      if (isValidUrl(input)) {
+      
+      const url = isValidUrl(input) ? input : extractUrl(input);
+      if (url) {
         for (const [name, rx] of Object.entries(regexMap)) {
-          if (rx.test(input)) return name;
+          if (rx.test(url)) return name;
         }
         return 'pinterest';
       }
@@ -851,7 +876,7 @@
             url = data.result?.video || data.video;
             break;
           case 'xiaohongshu':
-            url = data.result?.downloads?.[0]?.url;
+            url = data.result?.downloads?.[0]?.url || data.result?.images?.[0] || null;
             break;
           case 'snackvideo':
             url = data.result?.videoUrl;
@@ -937,6 +962,24 @@
       DOM.downloadButtons.appendChild(btnOpen);
     }
 
+    function showMediaSection(items, title, platform) {
+      if (!items.length) return;
+      DOM.mediaSection.classList.add('active');
+      DOM.mediaTitle.textContent = title || 'Media Gallery';
+      DOM.mediaPlatform.textContent = platform;
+
+      DOM.mediaDownloadButtons.innerHTML = '';
+      const btnDownloadAll = document.createElement('button');
+      btnDownloadAll.className = 'btn-download primary';
+      btnDownloadAll.textContent = `Download All (${items.length})`;
+      btnDownloadAll.addEventListener('click', async () => {
+        for (let i = 0; i < items.length; i++) {
+          await downloadFile(items[i].url, `${title || 'media'}_${i + 1}`);
+        }
+      });
+      DOM.mediaDownloadButtons.appendChild(btnDownloadAll);
+    }
+
     function showMediaGallery(items) {
       if (!items.length) { DOM.mediaGallery.innerHTML = ''; return; }
       DOM.mediaGallery.innerHTML = items.map((item, i) => `
@@ -959,15 +1002,28 @@
       DOM.mediaGallery.querySelectorAll('video').forEach(v => { v.addEventListener('mouseover', () => v.play()); v.addEventListener('mouseout', () => v.pause()); });
     }
 
-    function downloadFile(url, name) {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name || 'download';
-      a.target = '_blank';
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    async function downloadFile(url, name) {
+      try {
+        const response = await fetch(url, { mode: 'cors' });
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = name || 'download';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      } catch (e) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name || 'download';
+        a.target = '_blank';
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     }
 
     function setLoading(on) {
@@ -976,12 +1032,15 @@
     }
 
     DOM.fetchBtn.addEventListener('click', async () => {
-      const val = DOM.urlInput.value.trim();
-      if (!val) return alert('Please enter a URL or query.');
+      const rawInput = DOM.urlInput.value.trim();
+      if (!rawInput) return alert('Please enter a URL or query.');
+
+      const val = isValidUrl(rawInput) ? rawInput : (extractUrl(rawInput) || rawInput);
 
       setLoading(true);
       DOM.resultArea.textContent = 'Detecting platform...';
       DOM.videoSection.classList.remove('active');
+      DOM.mediaSection.classList.remove('active');
       DOM.mediaGallery.innerHTML = '';
 
       try {
@@ -999,10 +1058,16 @@
         if (res.status === false) { DOM.resultArea.textContent = `Error: ${res.message}`; return; }
 
         const videoUrl = extractVideoUrl(res, platform);
-        const title = res.title || res.result?.title || val;
-        if (videoUrl) showVideo(videoUrl, title, platform);
-
+        const title = res.title || res.result?.title || rawInput;
+        
         const mediaItems = extractMediaItems(res, platform);
+        
+        const isVideoUrl = videoUrl && /\.(mp4|webm|mov|avi|mkv)/i.test(videoUrl);
+        if (isVideoUrl) {
+          showVideo(videoUrl, title, platform);
+        }
+        
+        showMediaSection(mediaItems, title, platform);
         showMediaGallery(mediaItems);
       } catch (e) {
         DOM.resultArea.textContent = `Error: ${e.message}`;
