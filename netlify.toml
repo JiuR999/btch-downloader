@@ -1,6 +1,6 @@
 [build]
   # 构建命令
-  command = "npm run build"
+  command = "yarn build"
   
   # 发布目录 (index.html 所在目录)
   publish = "."
